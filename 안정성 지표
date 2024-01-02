@@ -1,0 +1,43 @@
+import warnings
+warnings.filterwarnings('ignore')
+import pandas as pd 
+import re
+
+def process_data(_df, credit_spread_file):
+    df = pd.read_csv(_df, encoding='cp949')
+    df = df.loc[df['증권명'] == '회사채', :]
+    selected_columns = ['회사명', '거래소코드', '회계년도', '평가사명 및 등급', '신용등급', '회계년월', '평가일', '증권명', '평가사구분',
+                        '증권구분', '자본총계', '부채총계', '자산총계', '유동자산', '비유동자산', '당좌자산', '유동부채', '비유동부채']
+    df.columns = selected_columns
+    df['부채비율'] = df['부채총계'] / df['자본총계'] * 100
+    df['당좌비율'] = df['당좌자산'] / df['부채총계']
+    df['유동비율'] = df['자산총계'] / df['부채총계']
+    df['자기자본 비율'] = (df['자산총계'] - df['부채총계']) / df['자본총계'] * 100
+    df['재무레버리지'] = df['부채총계'] / (df['자산총계'] - df['부채총계'])
+    df['신용등급'] = df['신용등급'].apply(lambda x: re.sub(r'\s*\([^)]*\)', '', x))
+    df['신용등급'] = df['신용등급'].str.replace('↓', '')
+    df['회계년월'] = pd.to_datetime(df['회계년월'])
+    df = df.reset_index(drop=True)
+
+    def get_quarter(row):
+        if row['회계년월'].month in [1, 2, 3]:
+            return '1분기'
+        elif row['회계년월'].month in [4, 5, 6]:
+            return '2분기'
+        elif row['회계년월'].month in [7, 8, 9]:
+            return '3분기'
+        else:
+            return '4분기'
+
+    df['분기'] = df.apply(get_quarter, axis=1)
+    result = pd.read_csv(credit_spread_file)
+    df['평가일'] = pd.to_datetime(df['평가일'], errors='coerce')
+    df['회계년월'] = pd.to_datetime(df['회계년월'])
+    df['분기'] = df.apply(get_quarter, axis=1)
+    result['연도'] = result['연도'].astype(str)
+    df['신용등급'] = result['신용등급'].str.replace('+', '')
+    df['연도'] = df['회계년도'].apply(lambda x: x.split('/')[0])
+
+    data = pd.merge(df, result, on=['분기', '연도', '신용등급'], how='inner')
+
+    return data
