@@ -12,12 +12,35 @@ today = datetime.today()
 today_str = today.strftime("%Y-%m-%d")
 
 st.title("Portfolio CAGR Simulator")
-st.caption(f"As of {today_str}")
-st.caption(
-    "Enter a ticker and a lookback period. The app automatically calculates CAGR from price history and projects future portfolio value."
-)
-st.caption(
-    "Examples: AAPL, MSFT, SPY, 005930.KS, 000660.KS, 035420.KS, 091990.KQ"
+st.markdown(
+    """
+    이 앱은 입력한 티커의 과거 주가 데이터를 기반으로 CAGR(연평균성장률)을 자동 계산하고, 
+    이를 바탕으로 미래 예상 자산가치를 시뮬레이션하는 도구입니다.
+
+    입력 방법
+    - Ticker: 종목 티커를 입력합니다.
+      - 미국 주식 예시: AAPL, MSFT, SPY
+      - 한국 주식 예시: 005930.KS, 000660.KS, 035420.KS
+    - CAGR Lookback (Years): 몇 년의 과거 데이터를 기준으로 CAGR을 계산할지 입력합니다.
+    - Projection (Days): 오늘 기준 몇 일 후까지 미래 수익률과 자산가치를 볼지 입력합니다.
+    - Initial Investment: 현재 시점에 한 번에 투자하는 초기 투자금입니다.
+    - Monthly Investment Amount: 매월 추가로 적립하는 투자 금액입니다.
+
+    결과 해석
+    - Selected CAGR: 사용자가 입력한 기간 기준으로 계산된 CAGR입니다.
+    - 3Y / 5Y / 10Y CAGR: 동일 종목의 최근 3년, 5년, 10년 기준 CAGR 비교값입니다.
+    - Total Principal Invested: 실제로 투입한 원금(초기 투자금 + 월 적립금 합계)입니다.
+    - Projected Future Value: CAGR이 앞으로도 유지된다고 가정했을 때의 미래 예상 자산가치입니다.
+    - Projected Profit: 미래 예상 자산가치에서 총 원금을 제외한 예상 수익입니다.
+    - Monte Carlo 결과는 과거 일별 수익률의 평균과 변동성을 반영하여 여러 시나리오를 반복 계산한 결과입니다.
+      - MC Mean Value: 시뮬레이션 평균값
+      - MC Median Value: 시뮬레이션 중앙값
+      - MC P10 Value: 보수적 시나리오(하위 10%)
+      - MC P90 Value: 낙관적 시나리오(상위 10%)
+
+    참고
+    - 본 결과는 과거 수익률과 변동성을 바탕으로 한 단순 시뮬레이션이며, 실제 미래 수익을 보장하지 않습니다.
+    """
 )
 
 
