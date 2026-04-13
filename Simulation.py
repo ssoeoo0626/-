@@ -1,28 +1,27 @@
-import math
 from datetime import datetime, timedelta
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 import yfinance as yf
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="포트폴리오 CAGR 시뮬레이터", layout="wide")
-st.title("포트폴리오 CAGR 미래자산 시뮬레이터")
+st.set_page_config(page_title="Portfolio CAGR Simulator", layout="wide")
 
+today = datetime.today()
+today_str = today.strftime("%Y-%m-%d")
+
+st.title("Portfolio CAGR Simulator")
+st.caption(f"As of {today_str}")
 st.caption(
-    "티커별 과거 CAGR을 계산하고, 초기 투자금 + 매월 적립금 기준으로 n일 후 미래자산을 추정합니다."
+    "Enter a ticker and a lookback period. The app automatically calculates CAGR from price history and projects future portfolio value."
+)
+st.caption(
+    "Examples: AAPL, MSFT, SPY, 005930.KS, 000660.KS, 035420.KS, 091990.KQ"
 )
 
-# -----------------------------
-# 유틸
-# -----------------------------
+
 @st.cache_data(ttl=60 * 60 * 6)
 def load_price_data(ticker: str, start_date: datetime, end_date: datetime) -> pd.DataFrame:
-    """
-    auto_adjust=True:
-    분할/배당 반영 가격 기준 계산
-    """
     df = yf.download(
         ticker,
         start=start_date.strftime("%Y-%m-%d"),
@@ -36,48 +35,41 @@ def load_price_data(ticker: str, start_date: datetime, end_date: datetime) -> pd
 
 def calculate_cagr(start_price: float, end_price: float, years: float) -> float:
     if start_price <= 0 or end_price <= 0 or years <= 0:
-        raise ValueError("CAGR 계산값이 올바르지 않습니다.")
+        raise ValueError("Invalid values for CAGR calculation.")
     return (end_price / start_price) ** (1 / years) - 1
-
-
-def annual_to_monthly_return(cagr: float) -> float:
-    return (1 + cagr) ** (1 / 12) - 1
 
 
 def annual_to_daily_return(cagr: float, trading_days: int = 252) -> float:
     return (1 + cagr) ** (1 / trading_days) - 1
 
 
-def future_value_with_monthly_contribution(
+def annual_to_monthly_return(cagr: float) -> float:
+    return (1 + cagr) ** (1 / 12) - 1
+
+
+def future_value_with_monthly_investment(
     initial_investment: float,
-    monthly_contribution: float,
+    monthly_investment_amount: float,
     annual_return: float,
-    n_days: int,
+    projection_days: int,
 ):
-    """
-    n일 후를 월 단위 기준으로 근사 계산
-    - 초기 투자금: 월복리
-    - 매월 적립금: 월말 납입 가정
-    """
-    months = n_days / 30.4375
+    months = projection_days / 30.4375
     full_months = int(months)
     remaining_fraction = months - full_months
 
     monthly_r = annual_to_monthly_return(annual_return)
 
-    # 초기 투자금 성장
     fv_initial = initial_investment * ((1 + monthly_r) ** months)
 
-    # 적립식 미래가치
     if abs(monthly_r) < 1e-12:
-        fv_contrib = monthly_contribution * full_months
-        fv_contrib *= (1 + monthly_r) ** remaining_fraction
+        fv_monthly = monthly_investment_amount * full_months
+        fv_monthly *= (1 + monthly_r) ** remaining_fraction
     else:
-        fv_contrib = monthly_contribution * (((1 + monthly_r) ** full_months - 1) / monthly_r)
-        fv_contrib *= (1 + monthly_r) ** remaining_fraction
+        fv_monthly = monthly_investment_amount * (((1 + monthly_r) ** full_months - 1) / monthly_r)
+        fv_monthly *= (1 + monthly_r) ** remaining_fraction
 
-    total_invested = initial_investment + monthly_contribution * full_months
-    future_value = fv_initial + fv_contrib
+    total_invested = initial_investment + monthly_investment_amount * full_months
+    future_value = fv_initial + fv_monthly
     profit = future_value - total_invested
 
     return {
@@ -89,22 +81,19 @@ def future_value_with_monthly_contribution(
     }
 
 
-# -----------------------------
-# 기본 입력표
-# -----------------------------
 default_df = pd.DataFrame(
     [
         {
             "Ticker": "AAPL",
-            "CAGR_기간(년)": 10,
-            "예측기간(n일)": 252,
-            "초기투자금(원)": 10000000,
-            "월적립금(원)": 500000,
+            "CAGR Lookback (Years)": 10,
+            "Projection (Days)": 252,
+            "Initial Investment": 10000000,
+            "Monthly Investment Amount": 500000,
         }
     ]
 )
 
-st.subheader("자산 입력")
+st.subheader("Assets")
 edited_df = st.data_editor(
     default_df,
     num_rows="dynamic",
@@ -112,26 +101,30 @@ edited_df = st.data_editor(
     hide_index=True,
     column_config={
         "Ticker": st.column_config.TextColumn("Ticker"),
-        "CAGR_기간(년)": st.column_config.NumberColumn("CAGR 기간(년)", min_value=1, max_value=30, step=1),
-        "예측기간(n일)": st.column_config.NumberColumn("예측기간(n일)", min_value=1, max_value=10000, step=1),
-        "초기투자금(원)": st.column_config.NumberColumn("초기 투자금(원)", min_value=0, step=100000),
-        "월적립금(원)": st.column_config.NumberColumn("월 적립금(원)", min_value=0, step=10000),
+        "CAGR Lookback (Years)": st.column_config.NumberColumn(
+            "CAGR Lookback (Years)", min_value=1, max_value=30, step=1
+        ),
+        "Projection (Days)": st.column_config.NumberColumn(
+            "Projection (Days)", min_value=1, max_value=10000, step=1
+        ),
+        "Initial Investment": st.column_config.NumberColumn(
+            "Initial Investment", min_value=0, step=100000
+        ),
+        "Monthly Investment Amount": st.column_config.NumberColumn(
+            "Monthly Investment Amount", min_value=0, step=10000
+        ),
     },
 )
 
-run = st.button("시뮬레이션 실행", type="primary")
+run = st.button("Run Simulation", type="primary")
 
-# -----------------------------
-# 계산
-# -----------------------------
 if run:
     if edited_df.empty:
-        st.warning("최소 1개 자산은 입력해줘.")
+        st.warning("Please add at least one asset.")
         st.stop()
 
     results = []
     errors = []
-    today = datetime.today()
 
     progress = st.progress(0)
     total_rows = len(edited_df)
@@ -139,86 +132,85 @@ if run:
     for i, row in edited_df.iterrows():
         try:
             ticker = str(row["Ticker"]).strip().upper()
-            cagr_years = int(row["CAGR_기간(년)"])
-            n_days = int(row["예측기간(n일)"])
-            initial_investment = float(row["초기투자금(원)"])
-            monthly_contribution = float(row["월적립금(원)"])
+            lookback_years = int(row["CAGR Lookback (Years)"])
+            projection_days = int(row["Projection (Days)"])
+            initial_investment = float(row["Initial Investment"])
+            monthly_investment_amount = float(row["Monthly Investment Amount"])
 
             if not ticker:
-                raise ValueError("Ticker가 비어 있습니다.")
+                raise ValueError("Ticker is empty.")
 
-            start_date = today - timedelta(days=int(cagr_years * 365.25) + 20)
+            start_date = today - timedelta(days=int(lookback_years * 365.25) + 20)
             df = load_price_data(ticker, start_date, today)
 
             if df.empty:
-                raise ValueError("가격 데이터를 불러오지 못했습니다.")
+                raise ValueError("No price data found.")
 
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = [c[0] for c in df.columns]
 
             if "Close" not in df.columns:
-                raise ValueError("Close 데이터가 없습니다.")
+                raise ValueError("Close column not found.")
 
             price_df = df[["Close"]].dropna().copy()
             if len(price_df) < 2:
-                raise ValueError("데이터가 부족합니다.")
+                raise ValueError("Not enough data.")
 
-            target_start = today - timedelta(days=int(cagr_years * 365.25))
+            target_start = today - timedelta(days=int(lookback_years * 365.25))
             valid_start_rows = price_df[price_df.index >= pd.Timestamp(target_start)]
 
             if valid_start_rows.empty:
-                actual_start_price = float(price_df["Close"].iloc[0])
-                actual_start_date = pd.to_datetime(price_df.index[0]).to_pydatetime()
+                start_price = float(price_df["Close"].iloc[0])
+                start_used = pd.to_datetime(price_df.index[0]).to_pydatetime()
             else:
-                actual_start_price = float(valid_start_rows["Close"].iloc[0])
-                actual_start_date = pd.to_datetime(valid_start_rows.index[0]).to_pydatetime()
+                start_price = float(valid_start_rows["Close"].iloc[0])
+                start_used = pd.to_datetime(valid_start_rows.index[0]).to_pydatetime()
 
             current_price = float(price_df["Close"].iloc[-1])
-            actual_end_date = pd.to_datetime(price_df.index[-1]).to_pydatetime()
-            actual_years = (actual_end_date - actual_start_date).days / 365.25
+            end_used = pd.to_datetime(price_df.index[-1]).to_pydatetime()
+            actual_years = (end_used - start_used).days / 365.25
 
-            cagr = calculate_cagr(actual_start_price, current_price, actual_years)
+            cagr = calculate_cagr(start_price, current_price, actual_years)
             daily_return = annual_to_daily_return(cagr)
-            expected_return_n_days = (1 + daily_return) ** n_days - 1
-            expected_price_n_days = current_price * (1 + expected_return_n_days)
+            projected_return = (1 + daily_return) ** projection_days - 1
+            projected_price = current_price * (1 + projected_return)
 
-            fv = future_value_with_monthly_contribution(
+            fv = future_value_with_monthly_investment(
                 initial_investment=initial_investment,
-                monthly_contribution=monthly_contribution,
+                monthly_investment_amount=monthly_investment_amount,
                 annual_return=cagr,
-                n_days=n_days,
+                projection_days=projection_days,
             )
 
             results.append(
                 {
                     "Ticker": ticker,
-                    "CAGR 기간(년)": cagr_years,
-                    "예측기간(n일)": n_days,
-                    "시작일": actual_start_date.strftime("%Y-%m-%d"),
-                    "종료일": actual_end_date.strftime("%Y-%m-%d"),
-                    "시작가": actual_start_price,
-                    "현재가": current_price,
-                    "CAGR(%)": cagr * 100,
-                    "n일 기대수익률(%)": expected_return_n_days * 100,
-                    "n일 후 예상가": expected_price_n_days,
-                    "초기투자금(원)": initial_investment,
-                    "월적립금(원)": monthly_contribution,
-                    "총투입원금(원)": fv["total_invested"],
-                    "예상미래자산(원)": fv["future_value"],
-                    "예상수익(원)": fv["profit"],
-                    "월복리 환산수익률(%)": fv["monthly_return"] * 100,
+                    "Lookback Years": lookback_years,
+                    "Projection Days": projection_days,
+                    "Start Date Used": start_used.strftime("%Y-%m-%d"),
+                    "End Date Used": end_used.strftime("%Y-%m-%d"),
+                    "Start Price": start_price,
+                    "Current Price": current_price,
+                    "CAGR (%)": cagr * 100,
+                    "Projected Return (%)": projected_return * 100,
+                    "Projected Price": projected_price,
+                    "Initial Investment": initial_investment,
+                    "Monthly Investment Amount": monthly_investment_amount,
+                    "Total Invested": fv["total_invested"],
+                    "Projected Portfolio Value": fv["future_value"],
+                    "Projected Profit": fv["profit"],
                 }
             )
 
         except Exception as e:
-            errors.append(f"{i+1}행 오류: {e}")
+            errors.append(f"Row {i + 1}: {e}")
 
         progress.progress((i + 1) / total_rows)
 
     progress.empty()
 
     if errors:
-        st.error("일부 자산은 계산되지 않았어.")
+        st.error("Some rows could not be calculated.")
         for err in errors:
             st.write(f"- {err}")
 
@@ -227,91 +219,51 @@ if run:
 
     result_df = pd.DataFrame(results)
 
-    # -----------------------------
-    # 요약 카드
-    # -----------------------------
-    total_invested = result_df["총투입원금(원)"].sum()
-    total_future_value = result_df["예상미래자산(원)"].sum()
-    total_profit = result_df["예상수익(원)"].sum()
+    total_invested = result_df["Total Invested"].sum()
+    total_future_value = result_df["Projected Portfolio Value"].sum()
+    total_profit = result_df["Projected Profit"].sum()
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("총 투입원금", f"{total_invested:,.0f}원")
-    c2.metric("총 예상 미래자산", f"{total_future_value:,.0f}원")
-    c3.metric("총 예상 수익", f"{total_profit:,.0f}원")
+    c1.metric("Total Invested", f"{total_invested:,.0f}")
+    c2.metric("Projected Portfolio Value", f"{total_future_value:,.0f}")
+    c3.metric("Projected Profit", f"{total_profit:,.0f}")
 
-    st.divider()
-
-    # -----------------------------
-    # 자산별 상세 결과
-    # -----------------------------
-    st.subheader("자산별 결과")
-    display_cols = [
-        "Ticker",
-        "CAGR 기간(년)",
-        "예측기간(n일)",
-        "현재가",
-        "CAGR(%)",
-        "n일 기대수익률(%)",
-        "n일 후 예상가",
-        "초기투자금(원)",
-        "월적립금(원)",
-        "총투입원금(원)",
-        "예상미래자산(원)",
-        "예상수익(원)",
-    ]
+    st.subheader("Asset Results")
     st.dataframe(
-        result_df[display_cols].style.format(
+        result_df.style.format(
             {
-                "현재가": "{:,.2f}",
-                "CAGR(%)": "{:,.2f}",
-                "n일 기대수익률(%)": "{:,.2f}",
-                "n일 후 예상가": "{:,.2f}",
-                "초기투자금(원)": "{:,.0f}",
-                "월적립금(원)": "{:,.0f}",
-                "총투입원금(원)": "{:,.0f}",
-                "예상미래자산(원)": "{:,.0f}",
-                "예상수익(원)": "{:,.0f}",
+                "Start Price": "{:,.2f}",
+                "Current Price": "{:,.2f}",
+                "CAGR (%)": "{:,.2f}",
+                "Projected Return (%)": "{:,.2f}",
+                "Projected Price": "{:,.2f}",
+                "Initial Investment": "{:,.0f}",
+                "Monthly Investment Amount": "{:,.0f}",
+                "Total Invested": "{:,.0f}",
+                "Projected Portfolio Value": "{:,.0f}",
+                "Projected Profit": "{:,.0f}",
             }
         ),
         use_container_width=True,
     )
 
-    st.divider()
-
-    # -----------------------------
-    # 그래프 1: 자산별 미래자산
-    # -----------------------------
-    st.subheader("자산별 예상 미래자산")
+    st.subheader("Projected Portfolio Value by Ticker")
     fig1, ax1 = plt.subplots(figsize=(10, 5))
-    ax1.bar(result_df["Ticker"], result_df["예상미래자산(원)"])
-    ax1.set_ylabel("원")
+    ax1.bar(result_df["Ticker"], result_df["Projected Portfolio Value"])
     ax1.set_xlabel("Ticker")
-    ax1.set_title("자산별 예상 미래자산")
+    ax1.set_ylabel("Value")
+    ax1.set_title("Projected Portfolio Value by Ticker")
     st.pyplot(fig1)
 
-    # -----------------------------
-    # 그래프 2: 총투입원금 vs 총미래자산
-    # -----------------------------
-    st.subheader("총계 비교")
+    st.subheader("Total Invested vs Projected Value")
     compare_df = pd.DataFrame(
         {
-            "구분": ["총투입원금", "총예상미래자산"],
-            "금액": [total_invested, total_future_value],
+            "Category": ["Total Invested", "Projected Value"],
+            "Amount": [total_invested, total_future_value],
         }
     )
     fig2, ax2 = plt.subplots(figsize=(8, 5))
-    ax2.bar(compare_df["구분"], compare_df["금액"])
-    ax2.set_ylabel("원")
-    ax2.set_title("총투입원금 vs 총예상미래자산")
+    ax2.bar(compare_df["Category"], compare_df["Amount"])
+    ax2.set_ylabel("Amount")
+    ax2.set_title("Total Invested vs Projected Value")
     st.pyplot(fig2)
-
-    # -----------------------------
-    # CSV 다운로드
-    # -----------------------------
-    csv = result_df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        "결과 CSV 다운로드",
-        data=csv,
-        file_name="portfolio_cagr_simulation_result.csv",
-        mime="text/csv",
-    )
